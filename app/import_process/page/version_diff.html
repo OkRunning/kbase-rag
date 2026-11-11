@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文档版本 Diff</title>
+    <style>
+        :root {
+            --bg: #f4f6f9;
+            --panel: #ffffff;
+            --text: #1f2937;
+            --muted: #697386;
+            --border: #dce2ea;
+            --accent: #2563eb;
+            --accent-weak: #e8f0ff;
+            --ok: #14804a;
+            --warn: #b7791f;
+            --bad: #c2410c;
+            --changed: #7c3aed;
+            --shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+        }
+
+        .shell {
+            width: min(1360px, calc(100vw - 32px));
+            margin: 22px auto;
+        }
+
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 14px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 22px;
+            letter-spacing: 0;
+        }
+
+        .toolbar {
+            display: grid;
+            grid-template-columns: 180px 180px 120px 120px;
+            gap: 10px;
+            align-items: end;
+        }
+
+        label {
+            display: grid;
+            gap: 5px;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        input,
+        select,
+        button {
+            height: 36px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0 10px;
+            background: #fff;
+            color: var(--text);
+            font: inherit;
+        }
+
+        button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        button.primary {
+            border-color: var(--accent);
+            background: var(--accent);
+            color: #fff;
+        }
+
+        button:disabled {
+            cursor: not-allowed;
+            opacity: 0.58;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 380px 1fr;
+            gap: 14px;
+            align-items: start;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .panel-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            min-height: 48px;
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border);
+            background: #fbfcfe;
+        }
+
+        .panel-title {
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .panel-body {
+            padding: 12px;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(110px, 1fr));
+            gap: 10px;
+        }
+
+        .metric {
+            min-height: 72px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px;
+            background: #fff;
+        }
+
+        .metric-name {
+            color: var(--muted);
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+
+        .metric-value {
+            font-size: 22px;
+            font-weight: 700;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            padding: 10px;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        th {
+            color: #4b5563;
+            background: #fbfcfe;
+            font-weight: 700;
+        }
+
+        tr.selectable {
+            cursor: pointer;
+        }
+
+        tr.selectable:hover,
+        tr.selected {
+            background: var(--accent-weak);
+        }
+
+        .mono {
+            font-family: Consolas, "SFMono-Regular", Menlo, monospace;
+        }
+
+        .muted {
+            color: var(--muted);
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            min-height: 22px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .badge.active { background: var(--ok); }
+        .badge.archived { background: #64748b; }
+        .badge.deleted { background: var(--bad); }
+        .badge.pending,
+        .badge.ready_conflict,
+        .badge.failed { background: var(--warn); }
+
+        .version-picker {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(130px, 1fr));
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .diff-stats {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(120px, 1fr));
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .stat {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px;
+            background: #fff;
+        }
+
+        .stat span {
+            display: block;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .stat strong {
+            display: block;
+            margin-top: 6px;
+            font-size: 20px;
+        }
+
+        .diff-columns {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .diff-list {
+            min-height: 260px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #fff;
+            overflow: hidden;
+        }
+
+        .diff-list h2 {
+            margin: 0;
+            padding: 10px;
+            border-bottom: 1px solid var(--border);
+            font-size: 14px;
+            letter-spacing: 0;
+            background: #fbfcfe;
+        }
+
+        .chunk {
+            min-height: 86px;
+            padding: 10px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .chunk:last-child {
+            border-bottom: 0;
+        }
+
+        .chunk-title {
+            font-weight: 700;
+            margin-bottom: 5px;
+            word-break: break-word;
+        }
+
+        .chunk-meta {
+            color: var(--muted);
+            font-size: 12px;
+            margin-bottom: 6px;
+            word-break: break-all;
+        }
+
+        .chunk-preview {
+            color: #374151;
+            font-size: 13px;
+            line-height: 1.45;
+            word-break: break-word;
+        }
+
+        .empty,
+        .error {
+            padding: 18px;
+            color: var(--muted);
+            text-align: center;
+            font-size: 13px;
+        }
+
+        .error {
+            color: var(--bad);
+        }
+
+        @media (max-width: 1000px) {
+            .topbar,
+            .layout,
+            .diff-columns {
+                grid-template-columns: 1fr;
+                display: grid;
+            }
+
+            .toolbar,
+            .summary-grid,
+            .diff-stats,
+            .version-picker {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .shell {
+                width: calc(100vw - 20px);
+                margin: 10px auto;
+            }
+
+            .toolbar,
+            .summary-grid,
+            .diff-stats,
+            .version-picker {
+                grid-template-columns: 1fr;
+            }
+
+            th,
+            td {
+                padding: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+<main class="shell">
+    <div class="topbar">
+        <h1>文档版本 Diff</h1>
+        <div class="toolbar">
+            <label>
+                租户
+                <input id="tenantId" value="default" maxlength="128" autocomplete="organization">
+            </label>
+            <label>
+                知识库
+                <input id="kbId" value="default" maxlength="128" autocomplete="off">
+            </label>
+            <button id="loadBtn" class="primary" type="button">刷新</button>
+            <button id="auditBtn" type="button">审计</button>
+        </div>
+    </div>
+
+    <section class="panel" style="margin-bottom:14px;">
+        <div class="panel-head">
+            <div class="panel-title">知识库审计</div>
+            <div id="auditStatus" class="muted">-</div>
+        </div>
+        <div class="panel-body">
+            <div class="summary-grid">
+                <div class="metric"><div class="metric-name">文档数</div><div class="metric-value" id="mDocs">0</div></div>
+                <div class="metric"><div class="metric-name">版本数</div><div class="metric-value" id="mVersions">0</div></div>
+                <div class="metric"><div class="metric-name">冲突版本</div><div class="metric-value" id="mConflicts">0</div></div>
+                <div class="metric"><div class="metric-name">回滚记录</div><div class="metric-value" id="mRollbacks">0</div></div>
+            </div>
+        </div>
+    </section>
+
+    <div class="layout">
+        <section class="panel">
+            <div class="panel-head">
+                <div class="panel-title">文档</div>
+                <div id="documentCount" class="muted">0</div>
+            </div>
+            <div class="panel-body" style="padding:0;">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>Doc ID</th>
+                        <th>状态</th>
+                        <th>Active</th>
+                    </tr>
+                    </thead>
+                    <tbody id="documentsBody"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head">
+                <div class="panel-title">版本差异</div>
+                <div id="selectedDoc" class="muted">-</div>
+            </div>
+            <div class="panel-body">
+                <div class="version-picker">
+                    <label>
+                        基准版本
+                        <select id="fromVersion"></select>
+                    </label>
+                    <label>
+                        目标版本
+                        <select id="toVersion"></select>
+                    </label>
+                    <button id="diffBtn" class="primary" type="button" disabled>对比</button>
+                </div>
+
+                <div class="diff-stats">
+                    <div class="stat"><span>新增</span><strong id="sAdded">0</strong></div>
+                    <div class="stat"><span>移除</span><strong id="sRemoved">0</strong></div>
+                    <div class="stat"><span>未变化</span><strong id="sUnchanged">0</strong></div>
+                    <div class="stat"><span>位置变化</span><strong id="sMoved">0</strong></div>
+                </div>
+
+                <div class="diff-columns">
+                    <div class="diff-list">
+                        <h2>新增 Chunk</h2>
+                        <div id="addedChunks" class="empty">-</div>
+                    </div>
+                    <div class="diff-list">
+                        <h2>移除 Chunk</h2>
+                        <div id="removedChunks" class="empty">-</div>
+                    </div>
+                    <div class="diff-list">
+                        <h2>位置变化</h2>
+                        <div id="movedChunks" class="empty">-</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+</main>
+
+<script>
+    const API_BASE = `${location.protocol}//${location.host}`;
+    const SCOPE_STORAGE_KEY = 'rag_version_diff_scope';
+    const state = {
+        documents: [],
+        versions: [],
+        selectedDocId: ''
+    };
+
+    const tenantIdInput = document.getElementById('tenantId');
+    const kbIdInput = document.getElementById('kbId');
+    const documentsBody = document.getElementById('documentsBody');
+    const documentCount = document.getElementById('documentCount');
+    const selectedDoc = document.getElementById('selectedDoc');
+    const fromVersion = document.getElementById('fromVersion');
+    const toVersion = document.getElementById('toVersion');
+    const diffBtn = document.getElementById('diffBtn');
+
+    function esc(value) {
+        return String(value ?? '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#039;');
+    }
+
+    function scope() {
+        return {
+            tenantId: tenantIdInput.value.trim() || 'default',
+            kbId: kbIdInput.value.trim() || 'default'
+        };
+    }
+
+    function saveScope() {
+        localStorage.setItem(SCOPE_STORAGE_KEY, JSON.stringify(scope()));
+    }
+
+    function restoreScope() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(SCOPE_STORAGE_KEY) || '{}');
+            tenantIdInput.value = saved.tenantId || tenantIdInput.value;
+            kbIdInput.value = saved.kbId || kbIdInput.value;
+        } catch (_) {}
+    }
+
+    function statusBadge(status) {
+        const normalized = String(status || 'unknown');
+        return `<span class="badge ${esc(normalized)}">${esc(normalized)}</span>`;
+    }
+
+    async function fetchJson(url, options) {
+        const response = await fetch(url, options);
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(payload.detail || payload.message || `HTTP ${response.status}`);
+        }
+        return payload;
+    }
+
+    function setAudit(report) {
+        document.getElementById('mDocs').textContent = report.document_count ?? 0;
+        document.getElementById('mVersions').textContent = report.version_count ?? 0;
+        document.getElementById('mConflicts').textContent = report.conflict_count ?? 0;
+        document.getElementById('mRollbacks').textContent = report.rollback_count ?? 0;
+        document.getElementById('auditStatus').textContent = new Date().toLocaleString('zh-CN');
+    }
+
+    function resetDiff() {
+        document.getElementById('sAdded').textContent = '0';
+        document.getElementById('sRemoved').textContent = '0';
+        document.getElementById('sUnchanged').textContent = '0';
+        document.getElementById('sMoved').textContent = '0';
+        renderChunkList('addedChunks', []);
+        renderChunkList('removedChunks', []);
+        renderMovedList([]);
+    }
+
+    function renderDocuments() {
+        documentCount.textContent = String(state.documents.length);
+        if (!state.documents.length) {
+            documentsBody.innerHTML = '<tr><td colspan="3" class="empty">-</td></tr>';
+            return;
+        }
+        documentsBody.innerHTML = state.documents.map((doc) => {
+            const selected = doc.doc_id === state.selectedDocId ? ' selected' : '';
+            return `
+                <tr class="selectable${selected}" data-doc-id="${esc(doc.doc_id)}">
+                    <td class="mono">${esc(doc.doc_id)}</td>
+                    <td>${statusBadge(doc.status)}</td>
+                    <td>${esc(doc.active_version ?? '-')}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function renderVersions() {
+        const options = state.versions.map((version) => {
+            const label = `v${version.doc_version} · ${version.status || 'unknown'}`;
+            return `<option value="${esc(version.doc_version)}">${esc(label)}</option>`;
+        }).join('');
+        fromVersion.innerHTML = options;
+        toVersion.innerHTML = options;
+        if (state.versions.length >= 2) {
+            toVersion.selectedIndex = 0;
+            fromVersion.selectedIndex = 1;
+        }
+        diffBtn.disabled = state.versions.length < 2 || !state.selectedDocId;
+    }
+
+    function renderChunkList(elementId, chunks) {
+        const element = document.getElementById(elementId);
+        if (!chunks.length) {
+            element.className = 'empty';
+            element.innerHTML = '-';
+            return;
+        }
+        element.className = '';
+        element.innerHTML = chunks.map((chunk) => `
+            <div class="chunk">
+                <div class="chunk-title">${esc(chunk.title || '-')}</div>
+                <div class="chunk-meta">#${esc(chunk.chunk_index ?? '-')} · ${esc(chunk.chunk_hash || '')}</div>
+                <div class="chunk-preview">${esc(chunk.content_preview || '')}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderMovedList(chunks) {
+        const element = document.getElementById('movedChunks');
+        if (!chunks.length) {
+            element.className = 'empty';
+            element.innerHTML = '-';
+            return;
+        }
+        element.className = '';
+        element.innerHTML = chunks.map((chunk) => `
+            <div class="chunk">
+                <div class="chunk-title">${esc(chunk.title || '-')}</div>
+                <div class="chunk-meta">${esc(chunk.from_index ?? '-')} -> ${esc(chunk.to_index ?? '-')}</div>
+                <div class="chunk-preview mono">${esc(chunk.chunk_hash || '')}</div>
+            </div>
+        `).join('');
+    }
+
+    async function loadAudit() {
+        const {tenantId, kbId} = scope();
+        const data = await fetchJson(`${API_BASE}/kb/${encodeURIComponent(kbId)}/version-audit?tenant_id=${encodeURIComponent(tenantId)}`);
+        setAudit(data.audit || {});
+    }
+
+    async function loadDocuments() {
+        saveScope();
+        resetDiff();
+        selectedDoc.textContent = '-';
+        state.selectedDocId = '';
+        state.versions = [];
+        renderVersions();
+        const {tenantId, kbId} = scope();
+        const data = await fetchJson(`${API_BASE}/kb/${encodeURIComponent(kbId)}/documents?tenant_id=${encodeURIComponent(tenantId)}`);
+        state.documents = data.documents || [];
+        renderDocuments();
+        await loadAudit();
+    }
+
+    async function loadVersions(docId) {
+        state.selectedDocId = docId;
+        selectedDoc.textContent = docId;
+        resetDiff();
+        renderDocuments();
+        const {tenantId, kbId} = scope();
+        const data = await fetchJson(
+            `${API_BASE}/kb/${encodeURIComponent(kbId)}/documents/${encodeURIComponent(docId)}/versions?tenant_id=${encodeURIComponent(tenantId)}`
+        );
+        state.versions = data.versions || [];
+        renderVersions();
+    }
+
+    async function loadDiff() {
+        if (!state.selectedDocId) {
+            return;
+        }
+        const fromValue = fromVersion.value;
+        const toValue = toVersion.value;
+        if (!fromValue || !toValue || fromValue === toValue) {
+            resetDiff();
+            return;
+        }
+        const {tenantId, kbId} = scope();
+        const url = `${API_BASE}/kb/${encodeURIComponent(kbId)}/documents/${encodeURIComponent(state.selectedDocId)}/diff`
+            + `?tenant_id=${encodeURIComponent(tenantId)}&from_version=${encodeURIComponent(fromValue)}&to_version=${encodeURIComponent(toValue)}`;
+        const data = await fetchJson(url);
+        const diff = data.diff || {};
+        const summary = diff.summary || {};
+        document.getElementById('sAdded').textContent = summary.added ?? 0;
+        document.getElementById('sRemoved').textContent = summary.removed ?? 0;
+        document.getElementById('sUnchanged').textContent = summary.unchanged ?? 0;
+        document.getElementById('sMoved').textContent = summary.index_changed ?? 0;
+        renderChunkList('addedChunks', diff.added_chunks || []);
+        renderChunkList('removedChunks', diff.removed_chunks || []);
+        renderMovedList(diff.index_changed_chunks || []);
+    }
+
+    function showError(message) {
+        documentsBody.innerHTML = `<tr><td colspan="3" class="error">${esc(message)}</td></tr>`;
+    }
+
+    document.getElementById('loadBtn').addEventListener('click', () => {
+        loadDocuments().catch((error) => showError(error.message));
+    });
+    document.getElementById('auditBtn').addEventListener('click', () => {
+        loadAudit().catch((error) => {
+            document.getElementById('auditStatus').textContent = error.message;
+        });
+    });
+    diffBtn.addEventListener('click', () => {
+        loadDiff().catch((error) => {
+            document.getElementById('addedChunks').className = 'error';
+            document.getElementById('addedChunks').textContent = error.message;
+        });
+    });
+    documentsBody.addEventListener('click', (event) => {
+        const row = event.target.closest('tr[data-doc-id]');
+        if (row) {
+            loadVersions(row.dataset.docId).catch((error) => showError(error.message));
+        }
+    });
+
+    restoreScope();
+    loadDocuments().catch((error) => showError(error.message));
+</script>
+</body>
+</html>

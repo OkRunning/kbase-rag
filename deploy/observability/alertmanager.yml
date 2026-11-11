@@ -1,0 +1,66 @@
+global:
+  resolve_timeout: 5m
+
+  # 全局 SMTP 邮箱配置（所有邮件接收器默认继承）
+  smtp_smarthost: 'smtp.163.com:465'
+  smtp_from: 'zhangnan758023@163.com'
+  smtp_auth_username: 'zhangnan758023@163.com'
+  smtp_auth_password: 'ZVbndBcVQdMnG7XP'
+  smtp_require_tls: false
+  smtp_hello: 'alertmanager'
+
+route:
+  receiver: default
+  group_by: ["alertname", "service", "severity"]
+  group_wait: 30s
+  group_interval: 10m
+  repeat_interval: 2h
+  routes:
+    - matchers:
+        - severity="critical"
+      receiver: critical
+      repeat_interval: 30m
+    - matchers:
+        - severity="warning"
+      receiver: warning
+
+receivers:
+  - name: default
+    webhook_configs:
+      - url: http://host.docker.internal:9000/alerts/default
+        send_resolved: true
+    email_configs:
+      - to: 1024234727@qq.com
+        send_resolved: true
+        headers:
+          Subject: '[kbase-rag][{{ .Status }}] {{ .CommonLabels.alertname }}'
+  - name: critical
+    webhook_configs:
+      - url: http://host.docker.internal:9000/alerts/critical
+        send_resolved: true
+    email_configs:
+      - to: 1024234727@qq.com
+        send_resolved: true
+        headers:
+          Subject: '[kbase-rag][critical][{{ .Status }}] {{ .CommonLabels.alertname }}'
+  - name: warning
+    webhook_configs:
+      - url: http://host.docker.internal:9000/alerts/warning
+        send_resolved: true
+    email_configs:
+      - to: 1024234727@qq.com
+        send_resolved: true
+        headers:
+          Subject: '[kbase-rag][warning][{{ .Status }}] {{ .CommonLabels.alertname }}'
+
+inhibit_rules:
+  - source_matchers:
+      - alertname="DatasetRagMetricsMissing"
+    target_matchers:
+      - alertname!="DatasetRagMetricsMissing"
+    equal: ["service"]
+  - source_matchers:
+      - alertname="OtelCollectorDown"
+    target_matchers:
+      - alertname!="OtelCollectorDown"
+    equal: ["service"]

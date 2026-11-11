@@ -1,0 +1,30 @@
+当前用户问题：
+{original_query}
+
+改写后的独立问题：
+{rewritten_query}
+
+查询理解结果：
+- query_type: {query_type}
+- intent: {intent}
+- item_names: {item_names}
+
+请根据问题类型和实体信息规划检索路径，并只返回 JSON。
+
+可用检索源：
+1. use_local_vector：本地知识库向量检索，适合事实、流程、总结、对比、安全和普通知识库问答。
+2. use_hyde：HyDE 假设答案检索，适合故障排查、问题描述模糊或缺少明确实体的问题。
+3. use_web：外部 Web Search，适合最新、实时、价格、新闻和当前状态类问题。
+
+输出格式如下：
+{{
+  "use_local_vector": true,
+  "use_hyde": false,
+  "use_web": false,
+  "local_top_k": 8,
+  "hyde_top_k": 5,
+  "web_top_k": 3,
+  "rrf_top_k": 8,
+  "rerank_top_k": 5,
+  "reason": "规划原因"
+}}

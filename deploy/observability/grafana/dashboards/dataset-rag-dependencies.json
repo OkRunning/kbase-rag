@@ -1,0 +1,276 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Overview",
+      "type": "link",
+      "url": "/d/kbase-rag-overview/kbase-rag-overview"
+    }
+  ],
+  "panels": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "targets": [
+        {
+          "expr": "sum(rag_dependency_health) by (dependency)",
+          "legendFormat": "{{dependency}}"
+        }
+      ],
+      "title": "Application Dependencies",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "id": 2,
+      "targets": [
+        {
+          "expr": "sum(up{job=~\"prometheus|alertmanager|loki|tempo|grafana|promtail|otel-collector\"}) by (job)",
+          "legendFormat": "{{job}}"
+        }
+      ],
+      "title": "Stack Targets Up",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "id": 3,
+      "targets": [
+        {
+          "expr": "sum(rate(rag_llm_requests_total{status=\"error\"}[5m])) / clamp_min(sum(rate(rag_llm_requests_total[5m])), 0.001)",
+          "legendFormat": "llm error"
+        }
+      ],
+      "title": "LLM Error Rate",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "id": 4,
+      "targets": [
+        {
+          "expr": "sum(rate(rag_milvus_operations_total{status=\"error\"}[5m])) / clamp_min(sum(rate(rag_milvus_operations_total[5m])), 0.001)",
+          "legendFormat": "milvus error"
+        }
+      ],
+      "title": "Milvus Error Rate",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "id": 5,
+      "targets": [
+        {
+          "expr": "sum(rate(rag_mongo_operations_total{status=\"error\"}[5m])) / clamp_min(sum(rate(rag_mongo_operations_total[5m])), 0.001)",
+          "legendFormat": "mongo error"
+        },
+        {
+          "expr": "sum(rate(rag_minio_operations_total{status=\"error\"}[5m])) / clamp_min(sum(rate(rag_minio_operations_total[5m])), 0.001)",
+          "legendFormat": "minio error"
+        }
+      ],
+      "title": "Storage Error Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "id": 6,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(rag_milvus_operation_duration_seconds_bucket[5m])) by (le, operation, collection))",
+          "legendFormat": "milvus {{operation}}/{{collection}}"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(rag_mongo_operation_duration_seconds_bucket[5m])) by (le, operation, collection))",
+          "legendFormat": "mongo {{operation}}/{{collection}}"
+        }
+      ],
+      "title": "Milvus and Mongo P95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "id": 7,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(rag_llm_duration_seconds_bucket[5m])) by (le, model, fallback))",
+          "legendFormat": "{{model}} fallback={{fallback}}"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(rag_rerank_duration_seconds_bucket[5m])) by (le, model, status))",
+          "legendFormat": "rerank {{model}}"
+        }
+      ],
+      "title": "LLM and Rerank P95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "id": 8,
+      "targets": [
+        {
+          "expr": "count(ALERTS{alertstate=\"firing\"})",
+          "legendFormat": "firing alerts"
+        },
+        {
+          "expr": "sum(rag_circuit_state{state=\"open\"})",
+          "legendFormat": "open circuits"
+        }
+      ],
+      "title": "Operational Risk",
+      "type": "stat"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": [
+    "kbase-rag",
+    "observability",
+    "dependencies"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "Dataset RAG Dependencies",
+  "uid": "kbase-rag-dependencies",
+  "version": 1,
+  "weekStart": ""
+}

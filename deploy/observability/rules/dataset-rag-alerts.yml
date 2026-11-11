@@ -1,0 +1,430 @@
+groups:
+  - name: kbase-rag-service
+    rules:
+      - alert: DatasetRagMetricsMissing
+        expr: absent(rag_http_requests_total)
+        for: 5m
+        labels:
+          service: kbase-rag
+          severity: critical
+        annotations:
+          summary: kbase-rag 业务指标缺失
+          description: 5 分钟内未采集到 rag_http_requests_total，可能是应用、OTel Collector 或 Prometheus 链路异常。
+          dashboard_url: http://localhost:13000/d/kbase-rag-overview/kbase-rag-overview
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#126-观测栈或指标缺失
+
+      - alert: OtelCollectorDown
+        expr: up{job="otel-collector"} == 0
+        for: 2m
+        labels:
+          service: otel-collector
+          severity: critical
+        annotations:
+          summary: OpenTelemetry Collector 不可用
+          description: Prometheus 无法抓取 otel-collector:8889。
+          dashboard_url: http://localhost:13000/d/kbase-rag-overview/kbase-rag-overview
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#126-观测栈或指标缺失
+
+  - name: kbase-rag-query
+    rules:
+      - alert: QueryHighErrorRate
+        expr: |
+          (
+            sum(rate(rag_query_total{status="error"}[5m]))
+            /
+            clamp_min(sum(rate(rag_query_total[5m])), 0.001)
+          ) > 0.05
+        for: 5m
+        labels:
+          service: kbase-rag
+          severity: warning
+        annotations:
+          summary: 查询错误率过高
+          description: 最近 5 分钟查询错误率超过 5%。
+          dashboard_url: http://localhost:13000/d/kbase-rag-overview/kbase-rag-overview
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#121-查询错误率过高
+
+      - alert: QueryCriticalErrorRate
+        expr: |
+          (
+            sum(rate(rag_query_total{status="error"}[5m]))
+            /
+            clamp_min(sum(rate(rag_query_total[5m])), 0.001)
+          ) > 0.20
+        for: 2m
+        labels:
+          service: kbase-rag
+          severity: critical
+        annotations:
+          summary: 查询错误率严重过高
+          description: 最近 5 分钟查询错误率超过 20%，需要立即处理。
+          dashboard_url: http://localhost:13000/d/kbase-rag-overview/kbase-rag-overview
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#121-查询错误率过高
+
+      - alert: GroundedAnswerRateLow
+        expr: |
+          (
+            sum(rate(rag_query_total{evidence_status="sufficient"}[5m]))
+            /
+            clamp_min(sum(rate(rag_query_total[5m])), 0.001)
+          ) < 0.8
+        for: 10m
+        labels:
+          service: kbase-rag
+          severity: warning
+        annotations:
+          summary: 据答率过低
+          description: 最近 5 分钟 evidence_status=sufficient 的查询占比低于 80%，检索证据支撑可能不足。
+          dashboard_url: http://localhost:13000/d/kbase-rag-overview/kbase-rag-overview
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#127-查询延迟和节点排查
+
+      - alert: QueryP95TooHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(rag_query_duration_seconds_bucket[5m])) by (le, is_stream)
+          ) > 15
+        for: 10m
+        labels:
+          service: kbase-rag
+          severity: warning
+        annotations:
+          summary: 查询 P95 耗时过高
+          description: 查询 workflow P95 超过 15 秒，按 is_stream 拆分排查。
+          dashboard_url: http://localhost:13000/d/kbase-rag-overview/kbase-rag-overview
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#127-查询延迟和节点排查
+
+      - alert: QueryNodeP95TooHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(rag_node_duration_seconds_bucket{graph="query"}[5m])) by (le, node_name)
+          ) > 8
+        for: 10m
+        labels:
+          service: kbase-rag
+          severity: warning
+        annotations:
+          summary: 查询节点 P95 耗时过高
+          description: 某个查询 LangGraph 节点 P95 超过 8 秒。
+          dashboard_url: http://localhost:13000/d/kbase-rag-overview/kbase-rag-overview
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#127-查询延迟和节点排查
+
+      - alert: SseQueueMissing
+        expr: sum(rate(rag_sse_events_total{event="queue_missing"}[5m])) > 0
+        for: 5m
+        labels:
+          service: kbase-rag
+          severity: warning
+        annotations:
+          summary: SSE 队列缺失
+          description: 最近 5 分钟出现 SSE queue_missing，后台任务和客户端连接生命周期可能不一致。
+          dashboard_url: http://localhost:13000/d/kbase-rag-query/kbase-rag-query
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#127-查询延迟和节点排查
+
+      - alert: SseFirstTokenP95TooHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(rag_llm_stream_first_token_seconds_bucket[5m])) by (le, model)
+          ) > 5
+        for: 10m
+        labels:
+          service: kbase-rag
+          severity: warning
+        annotations:
+          summary: SSE 首 token P95 过高
+          description: 流式查询首 token P95 超过 5 秒，可能是模型或前置检索变慢。
+          dashboard_url: http://localhost:13000/d/kbase-rag-query/kbase-rag-query
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#127-查询延迟和节点排查
+
+  - name: kbase-rag-import
+    rules:
+      - alert: ImportHighErrorRate
+        expr: |
+          (
+            sum(rate(rag_import_total{status="error"}[15m]))
+            /
+            clamp_min(sum(rate(rag_import_total[15m])), 0.001)
+          ) > 0.10
+        for: 15m
+        labels:
+          service: kbase-rag
+          severity: warning
+        annotations:
+          summary: 导入失败率过高
+          description: 最近 15 分钟导入失败率超过 10%。
+          dashboard_url: http://localhost:13000/d/kbase-rag-overview/kbase-rag-overview
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#128-导入链路异常
+
+      - alert: ImportP95TooHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(rag_import_duration_seconds_bucket[15m])) by (le, file_type)
+          ) > 300
+        for: 20m
+        labels:
+          service: kbase-rag
+          severity: warning
+        annotations:
+          summary: 导入 P95 耗时过高
+          description: 导入 workflow P95 超过 5 分钟。
+          dashboard_url: http://localhost:13000/d/kbase-rag-overview/kbase-rag-overview
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#128-导入链路异常
+
+  - name: kbase-rag-dependencies
+    rules:
+      - alert: LlmHighErrorRate
+        expr: |
+          (
+            sum(rate(rag_llm_requests_total{status="error"}[5m])) by (model)
+            /
+            clamp_min(sum(rate(rag_llm_requests_total[5m])) by (model), 0.001)
+          ) > 0.10
+        for: 5m
+        labels:
+          service: kbase-rag
+          severity: critical
+        annotations:
+          summary: LLM 错误率过高
+          description: 模型 {{ $labels.model }} 最近 5 分钟错误率超过 10%。
+          dashboard_url: http://localhost:13000/d/kbase-rag-dependencies/kbase-rag-dependencies
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#122-llm-错误率过高
+
+      - alert: LlmP95TooHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(rag_llm_duration_seconds_bucket[5m])) by (le, model)
+          ) > 12
+        for: 10m
+        labels:
+          service: kbase-rag
+          severity: warning
+        annotations:
+          summary: LLM P95 耗时过高
+          description: 模型 {{ $labels.model }} P95 超过 12 秒。
+          dashboard_url: http://localhost:13000/d/kbase-rag-dependencies/kbase-rag-dependencies
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#122-llm-错误率过高
+
+      - alert: LlmFallbackActivated
+        expr: sum(rate(rag_llm_requests_total{fallback="true"}[5m])) by (model) > 0
+        for: 5m
+        labels:
+          service: kbase-rag
+          severity: warning
+        annotations:
+          summary: LLM 备用模型开始承接请求
+          description: 最近 5 分钟出现 fallback=true 的 LLM 调用。
+          dashboard_url: http://localhost:13000/d/kbase-rag-dependencies/kbase-rag-dependencies
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#122-llm-错误率过高
+
+      - alert: CircuitOpen
+        expr: rag_circuit_state{state="open"} == 1
+        for: 1m
+        labels:
+          service: kbase-rag
+          severity: critical
+        annotations:
+          summary: 熔断器打开
+          description: 熔断器 {{ $labels.name }} 处于 open 状态。
+          dashboard_url: http://localhost:13000/d/kbase-rag-dependencies/kbase-rag-dependencies
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#122-llm-错误率过高
+
+      - alert: MilvusHighErrorRate
+        expr: |
+          (
+            sum(rate(rag_milvus_operations_total{status="error"}[5m])) by (operation, collection)
+            /
+            clamp_min(sum(rate(rag_milvus_operations_total[5m])) by (operation, collection), 0.001)
+          ) > 0.05
+        for: 5m
+        labels:
+          service: kbase-rag
+          severity: critical
+        annotations:
+          summary: Milvus 操作错误率过高
+          description: "{{ $labels.operation }}/{{ $labels.collection }} 错误率超过 5%。"
+          dashboard_url: http://localhost:13000/d/kbase-rag-overview/kbase-rag-overview
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#123-milvus-慢查询或错误
+
+      - alert: MilvusP95TooHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(rag_milvus_operation_duration_seconds_bucket[5m])) by (le, operation, collection)
+          ) > 2
+        for: 10m
+        labels:
+          service: kbase-rag
+          severity: warning
+        annotations:
+          summary: Milvus P95 耗时过高
+          description: "{{ $labels.operation }}/{{ $labels.collection }} P95 超过 2 秒。"
+          dashboard_url: http://localhost:13000/d/kbase-rag-overview/kbase-rag-overview
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#123-milvus-慢查询或错误
+
+      - alert: MongoHighErrorRate
+        expr: |
+          (
+            sum(rate(rag_mongo_operations_total{status="error"}[5m])) by (operation, collection)
+            /
+            clamp_min(sum(rate(rag_mongo_operations_total[5m])) by (operation, collection), 0.001)
+          ) > 0.05
+        for: 5m
+        labels:
+          service: kbase-rag
+          severity: warning
+        annotations:
+          summary: MongoDB 操作错误率过高
+          description: "{{ $labels.operation }}/{{ $labels.collection }} 错误率超过 5%。"
+          dashboard_url: http://localhost:13000/d/kbase-rag-dependencies/kbase-rag-dependencies
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#124-事件存储降级
+
+      - alert: MinioHighErrorRate
+        expr: |
+          (
+            sum(rate(rag_minio_operations_total{status="error"}[5m])) by (operation, bucket)
+            /
+            clamp_min(sum(rate(rag_minio_operations_total[5m])) by (operation, bucket), 0.001)
+          ) > 0.05
+        for: 5m
+        labels:
+          service: kbase-rag
+          severity: warning
+        annotations:
+          summary: MinIO 操作错误率过高
+          description: "{{ $labels.operation }}/{{ $labels.bucket }} 错误率超过 5%。"
+          dashboard_url: http://localhost:13000/d/kbase-rag-dependencies/kbase-rag-dependencies
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#125-快照保存失败
+
+  - name: kbase-rag-debuggability
+    rules:
+      - alert: EventStoreFallback
+        expr: sum(rate(rag_event_store_fallback_total[5m])) > 0
+        for: 5m
+        labels:
+          service: kbase-rag
+          severity: warning
+        annotations:
+          summary: 事件存储发生降级
+          description: observability_events 写 Mongo 失败，已降级到本地 JSONL，中心化 timeline 可能不完整。
+          dashboard_url: http://localhost:13000/d/kbase-rag-observability/kbase-rag-observability
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#124-事件存储降级
+
+      - alert: EventStoreLost
+        expr: sum(rate(rag_event_store_fallback_total{reason="jsonl_write_failed"}[5m])) > 0
+        for: 1m
+        labels:
+          service: kbase-rag
+          severity: critical
+        annotations:
+          summary: 事件存储完全失败
+          description: Mongo 写入失败后 JSONL fallback 也失败，事件 timeline 可能丢失。
+          dashboard_url: http://localhost:13000/d/kbase-rag-observability/kbase-rag-observability
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#124-事件存储降级
+
+      - alert: SnapshotHighErrorRate
+        expr: |
+          (
+            sum(rate(rag_snapshot_total{status="error"}[10m]))
+            /
+            clamp_min(sum(rate(rag_snapshot_total[10m])), 0.001)
+          ) > 0.02
+        for: 10m
+        labels:
+          service: kbase-rag
+          severity: warning
+        annotations:
+          summary: 快照保存失败率过高
+          description: 最近 10 分钟快照保存失败率超过 2%，节点回放能力可能受影响。
+          dashboard_url: http://localhost:13000/d/kbase-rag-observability/kbase-rag-observability
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#125-快照保存失败
+
+      - alert: ReplayHighErrorRate
+        expr: |
+          (
+            sum(rate(rag_replay_total{status="error"}[30m]))
+            /
+            clamp_min(sum(rate(rag_replay_total[30m])), 0.001)
+          ) > 0.20
+        for: 30m
+        labels:
+          service: kbase-rag
+          severity: warning
+        annotations:
+          summary: 回放失败率过高
+          description: 最近 30 分钟 replay 失败率超过 20%，需要检查快照、checkpoint 或副作用隔离配置。
+          dashboard_url: http://localhost:13000/d/kbase-rag-observability/kbase-rag-observability
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#129-告警到-trace--timeline--replay-的统一路径
+
+  - name: kbase-rag-automation
+    rules:
+      - alert: SyntheticProbeFailed
+        expr: sum(rate(rag_synthetic_probe_total{status="error"}[5m])) by (service, probe) > 0
+        for: 5m
+        labels:
+          service: kbase-rag
+          severity: critical
+        annotations:
+          summary: 合成探测失败
+          description: "{{ $labels.service }}/{{ $labels.probe }} 合成探测失败，可能先于用户请求暴露故障。"
+          dashboard_url: http://localhost:13000/d/kbase-rag-observability/kbase-rag-observability
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#1210-合成探测失败
+
+      - alert: SyntheticProbeDegraded
+        expr: sum(rate(rag_synthetic_probe_total{status="degraded"}[10m])) by (service, probe) > 0
+        for: 10m
+        labels:
+          service: kbase-rag
+          severity: warning
+        annotations:
+          summary: 合成探测降级
+          description: "{{ $labels.service }}/{{ $labels.probe }} 合成探测返回 degraded。"
+          dashboard_url: http://localhost:13000/d/kbase-rag-observability/kbase-rag-observability
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#1210-合成探测失败
+
+      - alert: QueryTaskStuck
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(rag_task_age_seconds_bucket{graph="query",status="processing"}[10m])) by (le)
+          ) > 600
+        for: 10m
+        labels:
+          service: kbase-rag
+          severity: warning
+        annotations:
+          summary: 查询任务疑似卡住
+          description: processing 查询任务年龄 P95 超过 10 分钟，请用 task.stuck.detected 事件定位 session_id。
+          dashboard_url: http://localhost:13000/d/kbase-rag-query/kbase-rag-query
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#1211-任务卡住
+
+      - alert: ImportTaskStuck
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(rag_task_age_seconds_bucket{graph="import",status="processing"}[10m])) by (le)
+          ) > 1800
+        for: 10m
+        labels:
+          service: kbase-rag
+          severity: warning
+        annotations:
+          summary: 导入任务疑似卡住
+          description: processing 导入任务年龄 P95 超过 30 分钟，请用 task.stuck.detected 事件定位 task_id。
+          dashboard_url: http://localhost:13000/d/kbase-rag-import/kbase-rag-import
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#1211-任务卡住
+
+      - alert: CapacityHeadroomLow
+        expr: rag_capacity_headroom == 0
+        for: 15m
+        labels:
+          service: kbase-rag
+          severity: warning
+        annotations:
+          summary: 容量余量不足
+          description: "{{ $labels.resource }}/{{ $labels.scope }} 容量余量不足，请检查磁盘或保留期配置。"
+          dashboard_url: http://localhost:13000/d/kbase-rag-observability/kbase-rag-observability
+          runbook_url: ../../OBSERVABILITY_ALERTING_OPTIMIZATION.md#1212-容量不足

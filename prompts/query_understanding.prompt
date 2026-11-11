@@ -1,0 +1,31 @@
+历史会话：
+{history_text}
+
+当前用户问题：
+{query}
+
+请对当前用户问题进行结构化理解，并只返回 JSON。
+
+任务要求：
+1. 识别用户意图 intent，候选值包括：qa、compare、summary、procedure、troubleshooting、realtime、chitchat、other。
+2. 识别 query_type，候选值包括：fact、procedure、comparison、troubleshooting、summary、realtime、chitchat、unknown。
+3. 抽取 entities，至少包含 item_names、model_numbers、parts、error_codes 四个字段，均为数组。
+4. 判断 need_item_name：当前问题是否必须知道具体商品名称才能继续回答。
+5. 结合历史会话完成指代消解，生成 rewritten_query。
+6. 如果问题不需要具体商品名称，item_names 允许为空。
+7. 如果判断需要追问用户，请在 clarification_hint 中给出简短提示。
+
+输出格式如下：
+{{
+  "intent": "qa",
+  "query_type": "procedure",
+  "rewritten_query": "补全后的独立问题",
+  "need_item_name": true,
+  "clarification_hint": "",
+  "entities": {{
+    "item_names": ["商品A"],
+    "model_numbers": ["A001"],
+    "parts": [],
+    "error_codes": []
+  }}
+}}
