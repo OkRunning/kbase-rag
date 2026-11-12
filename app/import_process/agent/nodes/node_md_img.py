@@ -120,6 +120,9 @@ def step_2_get_img_context(md_content, md_images_dir):
     :return:
     """
     targets = []
+    if not Path.exists(md_images_dir):
+        return targets
+
     for img in os.listdir(md_images_dir):
         # 判断图片格式
         if not is_supported_image(img):

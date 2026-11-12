@@ -1,10 +1,13 @@
 # 环境配置与依赖导入
 import os
 import time
+import uuid
+
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.exceptions import LangChainException
 from typing import Any, Iterator, Optional
+from urllib.parse import urlparse
 
 # 项目内部依赖
 from app.clients.langfuse import get_langfuse_callback
@@ -160,6 +163,21 @@ class _ObservedLLMClient:
                 self._fallback,
                 time.perf_counter() - start,
             )
+def _is_opencode_api_base(api_base: Optional[str]) -> bool:
+    """
+    判断 API 地址是否指向 OpenCode 服务。
+
+    Args:
+        api_base: OpenAI 兼容服务的基础地址。
+
+    Returns:
+        地址属于 OpenCode 域名时返回 True，否则返回 False。
+    """
+    if not api_base:
+        return False
+
+    hostname = urlparse(api_base).hostname or ""
+    return hostname == "opencode.ai" or hostname.endswith(".opencode.ai")
 
 
 def get_llm_client(model: Optional[str] = None, json_mode: bool = False, _fallback: bool = False) -> _ObservedLLMClient:
@@ -240,6 +258,16 @@ def get_llm_client(model: Optional[str] = None, json_mode: bool = False, _fallba
     #     raise Exception("模拟 LLM 调用失败")  # ✅ 触发 LLM 层失败
     #
 
+    # OpenCode 依赖会话头做请求路由。default_headers 会同时传给
+    # OpenAI 的同步与异步客户端，避免 ainvoke 请求丢失该请求头。
+    if _is_opencode_api_base(lm_config.base_url):
+        default_headers = {}
+        default_headers.setdefault(
+            "x-opencode-session",str(uuid.uuid4()),
+        )
+        default_headers.setdefault("User-Agent", "opencode-langchain")
+        # llm_kwargs["default_headers"] = default_headers
+
     # 5. 客户端初始化：捕获LangChain封装层异常，抛出更友好的提示
     try:
         callbacks = [_langfuse_callback] if _langfuse_callback is not None else None
@@ -252,6 +280,7 @@ def get_llm_client(model: Optional[str] = None, json_mode: bool = False, _fallba
             extra_body=extra_body,  # 国产模型私有参数透传
             model_kwargs=model_kwargs,  # OpenAI通用参数
             callbacks=callbacks,  # Langfuse 未启用时为 None，不影响 LLM 调用。
+            default_headers=default_headers
         )
     except LangChainException as e:
         raise Exception(f"[LLM客户端] 模型【{target_model}】初始化失败（LangChain层）：{str(e)}") from e

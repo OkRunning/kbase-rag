@@ -49,3 +49,5 @@ build/
 *.egg-info/
 
 reports/
+
+docs/
